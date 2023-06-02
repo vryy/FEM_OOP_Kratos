@@ -1,0 +1,249 @@
+% OOFEM lecture note
+\documentclass[12pt,a4paper,twoside]{article}
+\usepackage[font=it, belowskip=9pt]{caption}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{a4wide}
+\usepackage{longtable}
+\usepackage[english]{babel}
+\usepackage{listings}
+\usepackage{color}
+\definecolor{hgrau}{gray}{0.8}
+\usepackage{graphics}
+\usepackage{framed}
+\usepackage[xcolor,pdftex,leftbars]{changebar}
+\usepackage{xspace}
+\cbcolor{gray}
+\usepackage{graphicx}
+\usepackage{latexsym}
+\usepackage{natbib}   % natbib citation package; \citet, \citep
+\usepackage[toc,page]{appendix} %for appendix
+%\usepackage{sty/vo}
+% \usepackage{sty/hurga_diss}
+%\usepackage{sty/nassi}
+%\usepackage{sty/struktex}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage[T1]{fontenc}
+\usepackage{pgf}
+\usepackage{tikz}
+%\usepackage{tikz-uml}
+
+\nonstopmode
+
+\title{\textbf{OKFEM} LECTURE NOTE}
+\author{Hoang-Giang Bui \and Bac-Nam Vu}
+\date{\today}
+
+\begin{document} 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% DEFINE/REDEFINE COMMANDS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\xs}[1]{\raisebox{1.5ex}[-1.5ex]{#1}}
+     \textwidth 165mm
+     \textheight 235mm
+     \topmargin -18mm
+     %\textheight23.80cm
+      \headsep0.8cm
+%    \oddsidemargin 0mm
+%    \evensidemargin \oddsidemargin
+%    \columnsep7mm
+
+\newcommand{\kratos}{\texttt{KRATOS}\xspace}
+\newcommand{\python}{\texttt{Python}\xspace}
+\newcommand{\git}{\texttt{git}\xspace}
+\newcommand{\github}{\texttt{GitHub}\xspace}
+\newcommand{\cmake}{\texttt{cmake}\xspace}
+\newcommand{\boost}{\texttt{boost}\xspace}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% END OF COMMANDS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\maketitle
+
+\section{Preparation}
+
+\subsection{\kratos compilation}
+
+\kratos can be compiled and installed using the handy utility script \texttt{kratos\_prepare\_system.sh}. A typical content of such a script is below
+%
+\begin{lstlisting}[language=bash, basicstyle=\footnotesize, frame=single]
+#!/bin/sh
+FILE="/tmp/out.$$"
+GREP="/bin/grep"
+#....
+if [ "$(id -u)" != "0" ]; then
+   echo "You run this script as non-root user. \
+   	Please provide password to install additional libraries."
+   sudo apt-get install wget git python-dev libblas-dev liblapack-dev \
+   	gfortran gcc g++ libomp-dev libpthread-stubs0-dev make libtool
+else
+   echo "You run this script as root user."
+   apt-get install wget git python-dev libblas-dev liblapack-dev gfortran \
+   	gcc g++ libomp-dev libpthread-stubs0-dev make libtool
+fi
+echo "################################################"
+echo "Clone the kratos repository."
+git clone https://github.com/vryy/kratos_bcn2.git
+cd kratos_bcn2
+KRATOS_ROOT_PATH=$(pwd)
+echo "################################################"
+echo "Clone the structural_application."
+cd applications
+git clone https://github.com/vryy/structural_application.git
+echo "################################################"
+echo "Clone the ExternalSolversApplication"
+git clone https://github.com/vryy/ExternalSolversApplication.git
+echo "################################################"
+cd ..
+cd external_libraries
+echo "Get and compile Cmake."
+wget http://www.cmake.org/files/v2.8/cmake-2.8.12.tar.gz
+tar -xvf cmake-2.8.12.tar.gz
+mv cmake-2.8.12 cmake-2.8.12_src
+cd cmake-2.8.12_src
+./configure --prefix=$(pwd)/../cmake-2.8.12
+make install -j$(nproc)
+cd ..
+#rm -rf cmake-2.8.12_src cmake-2.8.12.tar.gz
+echo "Compile Cmake completed."
+echo "################################################"
+echo "Get and compile boost."
+wget http://sourceforge.net/projects/boost/files/boost/1.77.0/\
+	boost_1_77_0.tar.bz2/download
+mv download boost_1_77_0.tar.bz2
+tar -xvf boost_1_77_0.tar.bz2
+mv boost_1_77_0 boost_1_77_0_src
+cd boost_1_77_0_src
+./bootstrap.sh --prefix=$(pwd)/../boost_1_77_0
+./b2 install -j$(nproc)
+cd ..
+#rm -rf boost_1_77_0_src boost_1_77_0.tar.bz2
+echo "Compile boost completed."
+echo "################################################"
+echo "Get and compile Openmpi."
+wget https://download.open-mpi.org/release/open-mpi/v3.1/\
+	openmpi-3.1.2.tar.bz2
+tar -xvf openmpi-3.1.2.tar.bz2
+mv openmpi-3.1.2 openmpi-3.1.2_src
+cd openmpi-3.1.2_src
+./configure --prefix=$(pwd)/../openmpi-3.1.2 --enable-mpi-thread-multiple
+make install -j$(nproc)
+cd ..
+MPI_LOC=$(pwd)/openmpi-3.1.2
+echo "Compile Openmpi completed."
+echo "################################################"
+cmakekratos=$(pwd)/cmake-2.8.12/bin/cmake
+safe_cmakekratos=$(printf '%s\n' "$cmakekratos" | sed 's/[[\.*^$/]/\\&/g')
+BOOST_LOC=$(pwd)/boost_1_77_0
+export BOOST_ROOT=$BOOST_LOC
+ln -s $BOOST_ROOT/lib/libboost_python27.so $BOOST_ROOT/lib/libboost_python.so
+echo "Setup the environment variables."
+echo "alias cmakekratos=$cmakekratos" >> ~/.bashrc
+echo "export BOOST_ROOT=$BOOST_LOC" >> ~/.bashrc
+echo "export LD_LIBRARY_PATH=\$BOOST_ROOT/lib:\$LD_LIBRARY_PATH" >> ~/.bashrc
+echo "export MPI_ROOT=$MPI_LOC" >> ~/.bashrc
+echo "export LD_LIBRARY_PATH=\$MPI_ROOT/lib:\$LD_LIBRARY_PATH" >> ~/.bashrc
+echo "export KRATOS_ROOT_PATH=$KRATOS_ROOT_PATH" >> ~/.bashrc
+echo "export PYTHONPATH=\$KRATOS_ROOT_PATH/libs:\$PYTHONPATH" >> ~/.bashrc
+echo "export PYTHONPATH=\$KRATOS_ROOT_PATH:\$PYTHONPATH" \
+	>> ~/.bashrc
+echo "export LD_LIBRARY_PATH=\$KRATOS_ROOT_PATH/libs:\$LD_LIBRARY_PATH" \
+	>> ~/.bashrc
+echo "Setup the environment variables. Now it's compulsory to exit \
+		the current bash. Exiting..."
+exit
+bash
+cd $KRATOS_ROOT_PATH
+mkdir cmake_build
+cp cmake_build_templates/configure_gcc.sh cmake_build/configure.sh
+echo 'Preparation completed. Please open the new terminal to compile Kratos.'
+\end{lstlisting}
+
+\subsubsection{Explanation of the installation script}
+
+\begin{lstlisting}[language=bash, basicstyle=\footnotesize, frame=single]
+#!/bin/sh
+FILE="/tmp/out.$$"
+GREP="/bin/grep"
+#....
+if [ "$(id -u)" != "0" ]; then
+   echo "You run this script as non-root user. \
+   	Please provide password to install additional libraries."
+   sudo apt-get install wget git python-dev libblas-dev liblapack-dev \
+   	gfortran gcc g++ libomp-dev libpthread-stubs0-dev make libtool
+else
+   echo "You run this script as root user."
+   apt-get install wget git python-dev libblas-dev liblapack-dev gfortran \
+   	gcc g++ libomp-dev libpthread-stubs0-dev make libtool
+fi
+\end{lstlisting}
+
+These lines install the system dependencies, such as the compiler, the \python environment, which are required to compile and run \kratos.
+
+\begin{lstlisting}[language=bash, basicstyle=\footnotesize, frame=single]
+git clone https://github.com/vryy/kratos_bcn2.git
+cd kratos_bcn2
+KRATOS_ROOT_PATH=$(pwd)
+\end{lstlisting}
+
+This will check out, i.e. download and initialize, the \kratos repository located in \github. Additionally, a local system variable named \texttt{KRATOS\_ROOT\_PATH} is created for use later on during the configure process. This variable points to the location where the source code of \kratos is located.
+
+\begin{lstlisting}[language=bash, basicstyle=\footnotesize, frame=single]
+cd applications
+git clone https://github.com/vryy/structural_application.git
+git clone https://github.com/vryy/ExternalSolversApplication.git
+\end{lstlisting}
+
+These lines will check out the \texttt{structural\_application} and \texttt{ExternalSolversApplication} to the subfolder \texttt{applications} within the \kratos directory. These applications are sufficient to run a simple structural mechanics problem.
+
+\begin{lstlisting}[language=bash, basicstyle=\footnotesize, frame=single]
+cd external_libraries
+echo "Get and compile Cmake."
+wget http://www.cmake.org/files/v2.8/cmake-2.8.12.tar.gz
+tar -xvf cmake-2.8.12.tar.gz
+mv cmake-2.8.12 cmake-2.8.12_src
+cd cmake-2.8.12_src
+./configure --prefix=$(pwd)/../cmake-2.8.12
+make install -j$(nproc)
+\end{lstlisting}
+
+\cmake is necessary to configure \kratos. \cmake is a build system which produce a \texttt{Makefile}. This file is then used to invoke the \texttt{make} command to compile the source code.
+
+\begin{lstlisting}[language=bash, basicstyle=\footnotesize, frame=single]
+wget http://sourceforge.net/projects/boost/files/boost/1.77.0/\
+		boost_1_77_0.tar.bz2/download
+mv download boost_1_77_0.tar.bz2
+tar -xvf boost_1_77_0.tar.bz2
+mv boost_1_77_0 boost_1_77_0_src
+cd boost_1_77_0_src
+./bootstrap.sh --prefix=$(pwd)/../boost_1_77_0
+./b2 install -j$(nproc)
+\end{lstlisting}
+
+\boost library is used in \kratos for smart pointer and dense linear algebra. It is necessary to compile \boost. The version number \texttt{77} can be replaced by a newer version, however it is suggested to stick to the version provided in the installation script.
+
+\section{Object-oriented programming}
+% this section provides a rough overview of OOP, e.g. polymophism, inheritance. It does not mean to provide a detail discussion on the topic
+
+\section{FEM computational workflow}
+% typical computation flow of a FEM program, starting from the element loop to iteration through quadrature points and calling the material calculation routines.
+
+\section{Structure of \kratos}
+% structure of kratos that adheres to the FEM simulation flow in the previous section
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% BIBLIOGRAPHY
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \newpage
+% \bibliographystyle{sty/chicago_hurga}
+% \bibliography{lit}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% END OF BIBLIOGRAPHY
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\end{document}
+
